@@ -34,9 +34,15 @@ const ICSGenerator = {
         
         let totalEvents = 0;
         
+        // 合并同一课程同一半日内的重复/相邻记录后，再生成事件
+        const mergedCourseData = this.mergeDuplicateTimes(courseData);
+        if (mergedCourseData.length !== courseData.length) {
+            console.log(`[ICS Generator] 合并重复记录：${courseData.length} 条 → ${mergedCourseData.length} 条`);
+        }
+
         // 添加每个课程事件
-        courseData.forEach((course, index) => {
-            console.log(`[ICS Generator] 处理课程 ${index + 1}/${courseData.length}:`, {
+        mergedCourseData.forEach((course, index) => {
+            console.log(`[ICS Generator] 处理课程 ${index + 1}/${mergedCourseData.length}:`, {
                 name: course.name,
                 teacher: course.teacher,
                 location: course.location,
@@ -86,6 +92,71 @@ const ICSGenerator = {
             'END:STANDARD',
             'END:VTIMEZONE'
         ];
+    },
+
+    /**
+     * 计算课程记录的有效起止时间（HHMM，供合并比较用）
+     * @param {Object} course
+     * @returns {{start:string, end:string, hour:number}}
+     */
+    getEffectiveTime(course) {
+        const start = this.normalizeTime(course.startTime) || this.getPeriodTime(course.period, 'start');
+        const end = this.normalizeTime(course.endTime) || this.getPeriodTime(course.period, 'end');
+        const hour = parseInt(String(start).slice(0, 2), 10) || 0;
+        return { start: start || '0000', end: end || '0000', hour };
+    },
+
+    /**
+     * 合并“同一课程在同一个半日（早上/下午/晚上）内出现多条相同/相邻记录”的问题：
+     * 例如同一门课同一天同一周在上午同时存在“1-2 节”与“3-4 节”（或完全重复的两条）时，
+     * 把它们合并为“最早开始 ~ 最晚结束”的一条连续记录，避免 ICS 中出现重复/割裂的事件。
+     * @param {Array} courseData
+     * @returns {Array}
+     */
+    mergeDuplicateTimes(courseData) {
+        if (!Array.isArray(courseData)) return courseData;
+
+        // 按“课程名|教师|星期|周次|半日时段(早上/下午/晚上)”分组（不按地点，地点差异不影响合并）
+        const buckets = new Map();
+        courseData.forEach((course, index) => {
+            const t = this.getEffectiveTime(course);
+            const band = t.hour < 12 ? 'am' : (t.hour < 18 ? 'pm' : 'night');
+            const key = [
+                String(course.name || '').trim(),
+                String(course.teacher || '').trim(),
+                course.day,
+                (course.weeks !== undefined && course.weeks !== null) ? String(course.weeks) : ''
+            ].join('|') + '|' + band;
+
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key).push({ index, course, start: t.start, end: t.end });
+        });
+
+        // 只有出现 2 条及以上才需要合并
+        const groups = Array.from(buckets.values()).filter(g => g.length > 1);
+        if (!groups.length) return courseData;
+
+        const mergedEntryByFirstIndex = new Map(); // 桶内首条位置 -> 合并后的课程
+        const mergedIndexes = new Set();
+        groups.forEach(group => {
+            const minStart = group.reduce((m, x) => (x.start < m ? x.start : m), group[0].start);
+            const maxEnd = group.reduce((m, x) => (x.end > m ? x.end : m), group[0].end);
+            const base = group[0].course;
+            mergedEntryByFirstIndex.set(group[0].index, Object.assign({}, base, { startTime: minStart, endTime: maxEnd }));
+            group.forEach(x => mergedIndexes.add(x.index));
+            console.log(`[ICS Generator] 合并同一课程同半日记录“${base.name}”（周${base.day}，周次:${base.weeks}）：${group.map(x => x.start + '-' + x.end).join('、')} → ${minStart}-${maxEnd}`);
+        });
+
+        // 保持原始顺序：把合并后的单条放到该组首次出现的位置，其余重复项跳过
+        const result = [];
+        courseData.forEach((course, index) => {
+            if (mergedEntryByFirstIndex.has(index)) {
+                result.push(mergedEntryByFirstIndex.get(index));
+            } else if (!mergedIndexes.has(index)) {
+                result.push(course);
+            }
+        });
+        return result;
     },
 
     /**
