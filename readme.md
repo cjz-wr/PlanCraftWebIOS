@@ -1,5 +1,3 @@
-
-
 # 📅 ICS 课表导入 – 项目介绍
 
 ## 🎯 这是什么？
@@ -54,18 +52,25 @@ ics-course-import/
 - 学生快速导入课表到手机/电脑日历。
 - 分享课表给同学，一键生成链接。
 
+
+
+---
+>[!WARNING]
+**仅支持苹果系统(IOS)上使用，如果你是安卓系统，只能使用下面的app链接或者在PC端下载该文件然后通过发送到手机来添加，具体方式可以自行百度或AI**
+
+---
+### 🔗 相关链接
+
+- **在线演示**：[PlanCraftWebIOS](https://cjz-wr.github.io/PlanCraftWebIOS/)
+- **存放规则的仓库**： [PlanCraftDownload](https://github.com/cjz-wr/PlanCraftDownload)
+
+### 安卓app版本链接
+- **安装包列表**: [PlanCraft](https://github.com/cjz-wr/PlanCraftDownload/releases)
+---
 ## 🤝 开源与贡献
 
 本项目基于 **MIT 许可证** 开源，欢迎 Fork 和提交 Pull Request。  
 如果您想添加新的学校支持，请访问该仓库[PlanCraftDownload](https://github.com/cjz-wr/PlanCraftDownload),只需在远程 `rules_index.json` 中添加配置，并提交对应的提取脚本即可。
 
 ---
-
-### 🔗 相关链接
-
-- **在线演示**：[PlanCraftWebIOS](https://cjz-wr.github.io/PlanCraftWebIOS/)
-- **存放规则的仓库**： [PlanCraftDownload](https://github.com/cjz-wr/PlanCraftDownload)
-
----
-
 **开始使用吧，让课表管理变得轻松愉快！** 🎉
