@@ -46,8 +46,7 @@ const state = {
     selectedSchool: null,
     courseData: [],
     semesterStart: null,
-    icsFile: null,
-    loginWindow: null // 外部浏览器登录窗口
+    icsFile: null
 };
 
 // DOM 元素引用
@@ -271,23 +270,28 @@ function handleOpenWebview() {
     }
     console.log('[ICS] 外部浏览器登录:', loginUrl);
 
-    // 窗口名携带学校 id：教务页上的“识别课表”书签可据此识别学校（window.name 跨跳转保留）
-    // 用固定的窗口名以“新标签页”方式打开：重复点击会复用同一标签页，不会不断弹出新的标签页
+    // 用“真实链接 + 命名 target”的方式打开登录页：等同用户点击带 target 的 <a>，
+    // 浏览器会按“普通新标签页”处理（不再是 window.open 弹出的小窗，也不易被拦截）。
+    // target 用固定窗口名：重复点击会复用同名标签页；window.name 携带学校 id，
+    // 教务页上的“识别课表”书签可据此识别学校，并靠 window.opener 把结果回传本页。
     const winName = 'ics_school_' + ((state.selectedSchool && state.selectedSchool.id) || 'ics');
-    state.loginWindow = window.open(loginUrl, winName);
-    if (!state.loginWindow) {
-        showStatus('新标签页被浏览器拦截，请在地址栏旁允许“弹出窗口/新标签页”后重试', 'error');
-        return;
-    }
+    const anchor = document.createElement('a');
+    anchor.href = loginUrl;
+    anchor.target = winName;
+    anchor.rel = 'opener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
 
     if (elements.webviewStatus) elements.webviewStatus.style.display = 'flex';
     updateWebviewStatus('waiting', '外部浏览器登录中：请完成登录，登录后会自动跳转到课表网站');
 
     const ov = getSchoolOverride();
     if (ov && ov.noEmbed) {
-        showStatus('已用外部浏览器打开登录页（仅登录）。请在该窗口完成登录并进入个人课表页，然后点收藏栏“★ 识别课表”书签自动识别。', 'loading');
+        showStatus('已在新标签页打开登录页（仅登录）。请在该标签页完成登录并进入个人课表页，然后点收藏栏“★ 识别课表”书签自动识别。', 'loading');
     } else {
-        showStatus('已用外部浏览器打开登录页（仅登录）。登录完成后请回到本页，点“⇱ 尝试内嵌打开教务系统”在下方内嵌浏览器进入课表页，再点“🔍 智能一键识别课表”。', 'loading');
+        showStatus('已在新标签页打开登录页（仅登录）。登录完成后请回到本页，点“⇱ 尝试内嵌打开教务系统”在下方内嵌浏览器进入课表页，再点“🔍 智能一键识别课表”。', 'loading');
     }
 }
 
