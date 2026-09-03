@@ -28,20 +28,17 @@ const SITE_BASE = (function () {
 // 部分学校的“登录后跳转页/禁止内嵌”覆盖配置。
 // 背景：这些学校的跳转页(如新教务 CAS 登录页)返回 X-Frame-Options: SAMEORIGIN，
 // 无法被跨站网页 iframe 内嵌，且需要 cookie 会话才可自动登录跳转。
-// 处理方式（GitHub Pages·书签方案）：外部浏览器(仅登录)建立 cookie → “登录完成”用新窗口
-// 打开跳转页完成跳转 → 用户到课表页点“★ 识别课表”书签 → 自动回传识别。
+// 处理方式（GitHub Pages·书签方案）：外部浏览器(仅登录)建立 cookie 后，
+// 用户到教务课表页点“★ 识别课表”书签 → 自动回传识别。
 const SCHOOL_OVERRIDES = {
     gdlyzyjsxy: {
         name: '广东岭南职业技术学院',
         // 登录网站为 SSO（外部浏览器登录用）；登录成功后会自动跳转到 newjw 教务
         jumpUrl: 'https://sso.lnc.edu.cn/lyuapServer/login?service=https://newjw.lnc.edu.cn/caslogin',
         noEmbed: true, // sso/教务页均有 X-Frame-Options(DENY/SAMEORIGIN)，禁止跨站 iframe 内嵌
-        note: '该校登录/教务页禁止被网页内嵌（X-Frame-Options）。请在新窗口的 SSO 登录页登录（仅登录），登录后会自动跳转到教务；进入个人课表页后，点收藏栏“★ 识别课表”书签自动识别（无需粘贴）。'
+        note: '该校登录/教务页禁止被网页内嵌（X-Frame-Options）。请在新标签页的 SSO 登录页登录（仅登录），登录后会自动跳转到教务；进入个人课表页后，点收藏栏“★ 识别课表”书签自动识别（无需粘贴）。'
     }
 };
-
-const LABEL_OPEN_SCHEDULE = '✅ 登录完成 · 在内嵌浏览器打开课表页';
-const LABEL_OPEN_SCHEDULE_NOEMBED = '✅ 登录完成 · 新窗口打开课表页（禁止内嵌）';
 
 // 状态管理
 const state = {
@@ -58,7 +55,6 @@ const elements = {
     schoolSelect: document.getElementById('school-select'),
     openWebviewBtn: document.getElementById('open-webview-btn'),
     embedLoginBtn: document.getElementById('embed-login-btn'),
-    openScheduleBtn: document.getElementById('open-schedule-btn'),
     recognizeBtn: document.getElementById('recognize-btn'),
     embedCard: document.getElementById('embed-card'),
     noEmbedNote: document.getElementById('noembed-note'),
@@ -215,7 +211,6 @@ function bindEvents() {
     if (elements.schoolSelect) elements.schoolSelect.addEventListener('change', handleSchoolChange);
     if (elements.openWebviewBtn) elements.openWebviewBtn.addEventListener('click', handleOpenWebview);
     if (elements.embedLoginBtn) elements.embedLoginBtn.addEventListener('click', handleEmbedLogin);
-    if (elements.openScheduleBtn) elements.openScheduleBtn.addEventListener('click', handleOpenSchedule);
     if (elements.recognizeBtn) elements.recognizeBtn.addEventListener('click', handleRecognize);
     if (elements.embedRefreshBtn) elements.embedRefreshBtn.addEventListener('click', handleEmbedRefresh);
     if (elements.bookmarkCopyBtn) elements.bookmarkCopyBtn.addEventListener('click', handleBookmarkCopy);
@@ -252,10 +247,6 @@ function handleSchoolChange(event) {
     if (elements.openWebviewBtn) elements.openWebviewBtn.disabled = !ok;
     if (elements.embedLoginBtn) elements.embedLoginBtn.disabled = !ok || (!!ov && ov.noEmbed);
     if (elements.recognizeBtn) elements.recognizeBtn.disabled = !ok;
-    if (elements.openScheduleBtn) {
-        elements.openScheduleBtn.disabled = true;
-        elements.openScheduleBtn.textContent = (ov && ov.noEmbed) ? LABEL_OPEN_SCHEDULE_NOEMBED : LABEL_OPEN_SCHEDULE;
-    }
 
     updateWebviewStatus('waiting', ok ? '等待登录…' : '等待选择学校…');
     console.log('[ICS] 已选择学校:', state.selectedSchool ? state.selectedSchool.name : '无');
@@ -281,22 +272,22 @@ function handleOpenWebview() {
     console.log('[ICS] 外部浏览器登录:', loginUrl);
 
     // 窗口名携带学校 id：教务页上的“识别课表”书签可据此识别学校（window.name 跨跳转保留）
+    // 用固定的窗口名以“新标签页”方式打开：重复点击会复用同一标签页，不会不断弹出新的标签页
     const winName = 'ics_school_' + ((state.selectedSchool && state.selectedSchool.id) || 'ics');
-    state.loginWindow = window.open(loginUrl, winName, 'width=1200,height=800');
+    state.loginWindow = window.open(loginUrl, winName);
     if (!state.loginWindow) {
-        showStatus('弹出窗口被浏览器阻止，请允许弹出窗口后重试', 'error');
+        showStatus('新标签页被浏览器拦截，请在地址栏旁允许“弹出窗口/新标签页”后重试', 'error');
         return;
     }
 
     if (elements.webviewStatus) elements.webviewStatus.style.display = 'flex';
     updateWebviewStatus('waiting', '外部浏览器登录中：请完成登录，登录后会自动跳转到课表网站');
-    if (elements.openScheduleBtn) elements.openScheduleBtn.disabled = false;
 
     const ov = getSchoolOverride();
     if (ov && ov.noEmbed) {
-        showStatus('已用外部浏览器打开登录页（仅登录）。登录完成后请在本窗口进入个人课表页，然后点收藏栏“★ 识别课表”书签自动识别。也可点下方“登录完成 · 新窗口打开课表页”。', 'loading');
+        showStatus('已用外部浏览器打开登录页（仅登录）。请在该窗口完成登录并进入个人课表页，然后点收藏栏“★ 识别课表”书签自动识别。', 'loading');
     } else {
-        showStatus('已用外部浏览器打开登录页（仅登录）。登录完成后回到本页，点击“登录完成 · 在内嵌浏览器打开课表页”', 'loading');
+        showStatus('已用外部浏览器打开登录页（仅登录）。登录完成后请回到本页，点“⇱ 尝试内嵌打开教务系统”在下方内嵌浏览器进入课表页，再点“🔍 智能一键识别课表”。', 'loading');
     }
 }
 
@@ -317,53 +308,6 @@ function handleEmbedLogin() {
     if (elements.webviewStatus) elements.webviewStatus.style.display = 'flex';
     updateWebviewStatus('waiting', '正在内嵌加载教务系统…若页面无法显示（被拒绝嵌入），请改用“外部浏览器登录”。');
     navigateEmbed(loginUrl);
-}
-
-/**
- * “登录完成”按钮：
- *  - 可内嵌学校：把登录后跳转到的课表网站放入内嵌浏览器。
- *  - 禁止内嵌学校(如 SAMEORIGIN + 需 cookie)：用新窗口(完整浏览器)打开登录后跳转页，
- *    利用浏览器内已建立的 cookie 会话完成自动登录跳转；随后引导用“★ 识别课表”书签识别。
- */
-function handleOpenSchedule() {
-    const ov = getSchoolOverride();
-    if (ov && ov.noEmbed) {
-        handleOpenScheduleNoEmbed(ov);
-        return;
-    }
-
-    const base = deriveScheduleBase();
-    if (!base) {
-        showStatus('无法确定课表页地址', 'error');
-        return;
-    }
-    if (elements.webviewStatus) elements.webviewStatus.style.display = 'flex';
-    updateWebviewStatus('connected', '已在内嵌浏览器打开课表页');
-    navigateEmbed(base);
-    showStatus('已在内嵌浏览器打开课表页。请确认能看到个人课表表格后，点击“智能一键识别课表”', 'success');
-}
-
-/**
- * 禁止内嵌学校的“登录完成”流程：新窗口(带学校 id 窗口名)打开跳转页 + 展示书签识别向导
- */
-function handleOpenScheduleNoEmbed(ov) {
-    if (!ov || !ov.jumpUrl) {
-        showStatus('该校未配置登录后跳转页地址', 'error');
-        return;
-    }
-    // 新窗口(完整浏览器)打开登录后跳转页：利用已建立的 cookie 会话自动登录/跳转；
-    // 窗口名带学校 id，书签 onsite-extract.js 可据此识别学校
-    const winName = 'ics_school_' + ((state.selectedSchool && state.selectedSchool.id) || 'ics');
-    window.open(ov.jumpUrl, winName);
-
-    if (elements.webviewStatus) elements.webviewStatus.style.display = 'flex';
-    updateWebviewStatus('connected', '已在新窗口打开课表登录跳转页');
-    if (elements.openScheduleBtn) elements.openScheduleBtn.disabled = false;
-
-    // 展示禁止内嵌说明 + 书签识别向导（不显示空 iframe，不使用粘贴）
-    showNoEmbedNote(ov);
-    showBookmarkPanel();
-    showStatus('已在新窗口打开该校教务登录跳转页。请在新窗口进入个人课表页后，点收藏栏“★ 识别课表”书签，结果将自动回传并生成课表。', 'loading');
 }
 
 /**
