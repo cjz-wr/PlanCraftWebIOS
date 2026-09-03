@@ -18,6 +18,26 @@
 
     var RULES_INDEX_URL = 'https://raw.githubusercontent.com/cjz-wr/PlanCraftDownload/main/rules_index.json';
     var EXTRACT_TIMEOUT = 25000;
+    var FETCH_TIMEOUT = 5000;
+    var CACHE_TTL = 5 * 60 * 1000; // 5 分钟缓存
+
+    // ---------- 缓存工具（localStorage，跨页面共享） ----------
+    var CACHE_PREFIX = '__ics_cache_';
+
+    function cacheGet(key) {
+        try {
+            var raw = localStorage.getItem(CACHE_PREFIX + key);
+            if (!raw) return null;
+            var entry = JSON.parse(raw);
+            if (Date.now() - entry.t > CACHE_TTL) { localStorage.removeItem(CACHE_PREFIX + key); return null; }
+            return entry.v;
+        } catch (e) { return null; }
+    }
+
+    function cacheSet(key, value) {
+        try { localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ t: Date.now(), v: value })); }
+        catch (e) { /* 存储满时静默失败 */ }
+    }
 
     // ---------- 工具 ----------
     function getSchoolId() {
@@ -66,11 +86,11 @@
     }
 
     /**
-     * 带超时的 fetch，防止某个源挂起导致长时间无响应
+     * 带超时的 fetch
      */
     function withTimeoutFetch(url, ms) {
         var c = new AbortController();
-        var t = setTimeout(function () { c.abort(); }, ms || 8000);
+        var t = setTimeout(function () { c.abort(); }, ms || FETCH_TIMEOUT);
         return fetch(url, { signal: c.signal }).then(function (r) {
             clearTimeout(t);
             return r;
@@ -78,6 +98,56 @@
             clearTimeout(t);
             throw e;
         });
+    }
+
+    /**
+     * 并行竞速获取：所有源同时请求，取第一个成功的文本
+     */
+    function fetchFirstOk(urls, cacheKey) {
+        if (cacheKey) {
+            var cached = cacheGet(cacheKey);
+            if (cached) { console.log('[ICS 识别] 命中缓存:', cacheKey); return Promise.resolve(cached); }
+        }
+        var promises = urls.map(function (url) {
+            return withTimeoutFetch(url).then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.text();
+            }).then(function (text) {
+                if (!text || !text.trim()) throw new Error('空响应');
+                return text;
+            });
+        });
+        return Promise.any(promises).then(function (text) {
+            if (cacheKey) cacheSet(cacheKey, text);
+            return text;
+        });
+    }
+
+    /**
+     * 串行重试获取（并行竞速的后备）
+     */
+    function fetchWithRetry(urls, cacheKey) {
+        if (cacheKey) {
+            var cached = cacheGet(cacheKey);
+            if (cached) return Promise.resolve(cached);
+        }
+        var i = 0, attempt = 0;
+        function tryNext() {
+            if (i >= urls.length) return Promise.reject(new Error('所有源均失败'));
+            return withTimeoutFetch(urls[i]).then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.text();
+            }).then(function (text) {
+                if (!text || !text.trim()) throw new Error('空响应');
+                if (cacheKey) cacheSet(cacheKey, text);
+                return text;
+            }).catch(function () {
+                attempt++;
+                if (attempt < 2) { return new Promise(function (r) { setTimeout(r, 200); }).then(tryNext); }
+                i++; attempt = 0; return tryNext();
+            });
+        }
+        return tryNext();
     }
 
     // ---------- 主流程 ----------
@@ -93,44 +163,38 @@
         console.log('[ICS 识别] 学校 id =', schoolId, '当前页 =', window.location.href);
 
         try {
-            // 1) 拉取规则（GitHub raw → jsDelivr 回退），找到学校配置
+            // 1) 并行竞速拉取规则文件，找到学校配置
             var rulesSources = [RULES_INDEX_URL];
             var rj = toJsDelivr(RULES_INDEX_URL);
             if (rj && rulesSources.indexOf(rj) === -1) rulesSources.push(rj);
-            var rules = null;
-            for (var ri = 0; ri < rulesSources.length && !rules; ri++) {
-                try {
-                    var rulesRes = await withTimeoutFetch(rulesSources[ri]);
-                    if (rulesRes.ok) rules = await rulesRes.json();
-                } catch (e) {
-                    console.warn('[ICS 识别] 规则源失败:', rulesSources[ri], e);
-                }
+
+            var rulesText;
+            try {
+                rulesText = await fetchFirstOk(rulesSources, 'rules_index');
+            } catch (e) {
+                console.warn('[ICS 识别] 并行获取规则失败，降级串行重试');
+                rulesText = await fetchWithRetry(rulesSources, 'rules_index');
             }
+            var rules = JSON.parse(rulesText);
             if (!rules) throw new Error('获取学校配置失败（网络错误）');
             var school = null;
             (rules.schools || []).forEach(function (s) { if (s.id === schoolId) school = s; });
             if (!school) throw new Error('未找到学校：' + schoolId);
 
-            // 2) 拉取该校官方提取脚本文本（github → jsDelivr → gitcode 回退，各自重试 2 次）
+            // 2) 并行竞速拉取该校官方提取脚本
             var urls = [];
             if (school.urls && school.urls.github_raw_js) urls.push(school.urls.github_raw_js);
             var sj = toJsDelivr(school.urls && school.urls.github_raw_js);
             if (sj && urls.indexOf(sj) === -1) urls.push(sj);
             if (school.urls && school.urls.gitcode_raw_js) urls.push(school.urls.gitcode_raw_js);
-            var scriptText = null;
-            for (var i = 0; i < urls.length && !scriptText; i++) {
-                for (var attempt = 0; attempt < 2 && !scriptText; attempt++) {
-                    try {
-                        var sr = await withTimeoutFetch(urls[i]);
-                        if (sr.ok) {
-                            var t = await sr.text();
-                            if (t && t.trim()) scriptText = t;
-                        }
-                    } catch (e) {
-                        console.warn('[ICS 识别] 脚本获取失败(重试):', urls[i], e);
-                    }
-                    if (!scriptText && attempt === 0) await new Promise(function (r) { setTimeout(r, 800); });
-                }
+
+            var scriptText;
+            var scriptCacheKey = 'script_' + schoolId;
+            try {
+                scriptText = await fetchFirstOk(urls, scriptCacheKey);
+            } catch (e) {
+                console.warn('[ICS 识别] 并行获取脚本失败，降级串行重试');
+                scriptText = await fetchWithRetry(urls, scriptCacheKey);
             }
             if (!scriptText) throw new Error('无法获取该校提取脚本（网络失败，请稍后重试）');
 

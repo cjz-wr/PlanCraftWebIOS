@@ -126,13 +126,32 @@ async function fetchWithTimeout(url, ms = 7000) {
 }
 
 /**
- * 从远程加载学校列表（多源回退：GitHub raw → jsDelivr CDN，各源带超时）
+ * 从远程加载学校列表（多源回退 + 缓存：GitHub raw → jsDelivr CDN，各源带超时）
  * @returns {Promise<boolean>}
  */
 async function loadSchools() {
     const sources = [RULES_INDEX_URL];
     const j = toJsDelivr(RULES_INDEX_URL);
     if (j && sources.indexOf(j) === -1) sources.push(j);
+
+    // 尝试缓存（5 分钟 TTL）
+    const cacheKey = '__ics_cache_rules_index';
+    try {
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+            const entry = JSON.parse(raw);
+            if (Date.now() - entry.t < 5 * 60 * 1000) {
+                const data = entry.v;
+                if (data && Array.isArray(data.schools)) {
+                    state.schools = data.schools;
+                    console.log('[ICS] 命中规则缓存，学校数量:', state.schools.length);
+                    renderSchoolSelect();
+                    return true;
+                }
+            }
+            localStorage.removeItem(cacheKey);
+        }
+    } catch (e) { /* ignore */ }
 
     let lastErr = null;
     for (const url of sources) {
@@ -144,6 +163,8 @@ async function loadSchools() {
             if (!data || !Array.isArray(data.schools)) throw new Error('数据格式异常');
             state.schools = data.schools;
             console.log('[ICS] 学校数量:', state.schools.length);
+            // 写入缓存
+            try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), v: data })); } catch (e) { /* ignore */ }
             renderSchoolSelect();
             return true;
         } catch (e) {
@@ -153,7 +174,7 @@ async function loadSchools() {
     }
 
     console.error('[ICS] 所有学校列表源均失败:', lastErr);
-    renderSchoolSelect(); // 至少保留空下拉框
+    renderSchoolSelect();
     throw new Error('无法获取学校列表。请：①用 http/https 访问（不要直接双击 file://）；②网络可能无法访问 raw.githubusercontent.com（会自动尝试 jsDelivr CDN）；③若使用代理请检查后刷新。');
 }
 
@@ -491,31 +512,72 @@ async function recognizeFromHtml(html) {
 }
 
 /**
- * 获取学校提取脚本文本（github 失败时回退 gitcode）
+ * 获取学校提取脚本文本（多源并行竞速 + 缓存 + 失败降级串行重试）
  * @returns {Promise<string>}
  */
 async function fetchSchoolScriptText() {
     const urls = (state.selectedSchool && state.selectedSchool.urls) || {};
-    // 顺序：GitHub raw → jsDelivr CDN 镜像 → gitcode 备用
     const list = [];
     [urls.github_raw_js, urls.gitcode_raw_js].forEach((u) => { if (u) list.push(u); });
     const j = toJsDelivr(urls.github_raw_js);
     if (j && list.indexOf(j) === -1) list.splice(1, 0, j);
     if (!list.length) throw new Error('该学校未配置提取脚本地址');
 
+    const schoolId = state.selectedSchool && state.selectedSchool.id;
+    const cacheKey = schoolId ? '__ics_cache_script_' + schoolId : null;
+
+    // 尝试缓存
+    if (cacheKey) {
+        try {
+            const raw = localStorage.getItem(cacheKey);
+            if (raw) {
+                const entry = JSON.parse(raw);
+                if (Date.now() - entry.t < 5 * 60 * 1000) {
+                    console.log('[ICS] 命中脚本缓存:', schoolId);
+                    return entry.v;
+                }
+                localStorage.removeItem(cacheKey);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // 并行竞速：所有源同时请求，取第一个成功的
+    try {
+        const promises = list.map(url =>
+            fetchWithTimeout(url).then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.text();
+            }).then(text => {
+                if (!text || !text.trim()) throw new Error('空响应');
+                return text;
+            })
+        );
+        const text = await Promise.any(promises);
+        if (cacheKey) {
+            try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), v: text })); } catch (e) { /* ignore */ }
+        }
+        return text;
+    } catch (e) {
+        console.warn('[ICS] 并行获取脚本失败，降级串行重试');
+    }
+
+    // 降级：串行重试（重试间隔 200ms）
     for (const url of list) {
         for (let attempt = 0; attempt < 2; attempt++) {
             try {
                 const res = await fetchWithTimeout(url);
                 if (!res.ok) continue;
                 const text = await res.text();
-                if (text && text.trim()) return text;
+                if (text && text.trim()) {
+                    if (cacheKey) {
+                        try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), v: text })); } catch (e) { /* ignore */ }
+                    }
+                    return text;
+                }
             } catch (e) {
                 console.warn('[ICS] 脚本获取失败(重试):', url, e.message);
             }
-            if (attempt === 0) {
-                await new Promise(r => setTimeout(r, 800));
-            }
+            if (attempt === 0) await new Promise(r => setTimeout(r, 200));
         }
     }
     throw new Error('无法获取该校提取脚本（请检查网络后重试）');
@@ -884,8 +946,29 @@ async function handleUpload() {
         const result = await UploadManager.upload(state.icsFile);
 
         if (elements.shareSection) elements.shareSection.style.display = 'block';
-        if (elements.shareUrl) elements.shareUrl.value = result.url;
-        showStatus('上传成功', 'success');
+        if (elements.shareUrl) {
+            elements.shareUrl.value = result.url;
+            
+            // 判断是否为真实直链（含 /dl/ + timestamp.hash 格式）
+            const isDirectLink = /\/dl\/\d+\.[a-f0-9]+\//.test(result.url);
+            
+            // 自动复制链接到剪贴板
+            try {
+                await navigator.clipboard.writeText(result.url);
+                if (isDirectLink) {
+                    showStatus('上传成功，直链已自动复制到剪贴板。请在苹果日历中通过"文件→导入"粘贴使用', 'success');
+                } else {
+                    showStatus('上传成功，链接已复制。请在浏览器打开链接点击 Download 按钮下载后导入日历', 'success');
+                }
+            } catch (clipboardError) {
+                console.warn('自动复制失败，用户可手动复制:', clipboardError);
+                if (isDirectLink) {
+                    showStatus('上传成功，链接可直接用于苹果日历导入（点击复制按钮手动复制）', 'success');
+                } else {
+                    showStatus('上传成功，请点击复制按钮，在浏览器打开链接后下载导入', 'success');
+                }
+            }
+        }
     } catch (error) {
         showStatus('上传失败: ' + error.message, 'error');
     } finally {
@@ -901,7 +984,7 @@ function handleCopy() {
     if (!input) return;
     input.select();
     document.execCommand('copy');
-    showStatus('链接已复制到剪贴板', 'success');
+    showStatus('链接已复制到剪贴板。请在苹果日历中通过"文件→导入"粘贴使用', 'success');
 }
 
 /**
