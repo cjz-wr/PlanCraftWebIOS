@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICS 课表导入 - 诊断测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .test-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .info { background: #cce5ff; color: #004085; }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover { background: #5a6fd6; }
+        #log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 ICS 课表导入 - 诊断测试</h1>
+    
+    <div class="test-section">
+        <div class="test-title">环境检查</div>
+        <div id="protocol-check" class="test-item info">检查中...</div>
+        <div id="cors-check" class="test-item info">检查中...</div>
+        <div id="fetch-check" class="test-item info">检查中...</div>
+    </div>
+
+    <div class="test-section">
+        <div class="test-title">网络测试</div>
+        <button onclick="testFetch()">测试 fetch 请求</button>
+        <button onclick="testSchools()">测试加载学校列表</button>
+        <div id="fetch-result" class="test-item" style="display: none;"></div>
+    </div>
+
+    <div class="test-section">
+        <div class="test-title">用户脚本检查</div>
+        <div id="userscript-check" class="test-item info">检查中...</div>
+        <button onclick="testUserscript()">测试用户脚本通信</button>
+    </div>
+
+    <div class="test-section">
+        <div class="test-title">控制台日志</div>
+        <div id="log">等待测试...</div>
+    </div>
+
+    <script>
+        // 日志函数
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `<div>[${time}] ${message}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // 协议检查
+        function checkProtocol() {
+            const el = document.getElementById('protocol-check');
+            const protocol = window.location.protocol;
+            
+            if (protocol === 'file:') {
+                el.className = 'test-item error';
+                el.textContent = '❌ 使用 file:// 协议 - CORS 限制，无法加载远程资源';
+                log('错误: 使用 file:// 协议，建议使用 HTTP 服务器', 'error');
+            } else if (protocol === 'http:' || protocol === 'https:') {
+                el.className = 'test-item success';
+                el.textContent = '✅ 使用 HTTP/HTTPS 协议 - 正常';
+                log('协议检查通过: ' + protocol, 'success');
+            }
+        }
+
+        // CORS 检查
+        async function checkCORS() {
+            const el = document.getElementById('cors-check');
+            try {
+                const response = await fetch('https://raw.githubusercontent.com/cjz-wr/PlanCraftDownload/main/rules_index.json', {
+                    method: 'HEAD'
+                });
+                el.className = 'test-item success';
+                el.textContent = '✅ CORS 请求成功 - 可以访问 GitHub';
+                log('CORS 检查通过', 'success');
+            } catch (error) {
+                el.className = 'test-item error';
+                el.textContent = '❌ CORS 请求失败: ' + error.message;
+                log('CORS 检查失败: ' + error.message, 'error');
+            }
+        }
+
+        // Fetch 检查
+        async function checkFetch() {
+            const el = document.getElementById('fetch-check');
+            try {
+                const response = await fetch('https://httpbin.org/get');
+                if (response.ok) {
+                    el.className = 'test-item success';
+                    el.textContent = '✅ Fetch API 正常';
+                    log('Fetch API 检查通过', 'success');
+                } else {
+                    throw new Error('HTTP ' + response.status);
+                }
+            } catch (error) {
+                el.className = 'test-item error';
+                el.textContent = '❌ Fetch API 错误: ' + error.message;
+                log('Fetch API 检查失败: ' + error.message, 'error');
+            }
+        }
+
+        // 用户脚本检查
+        function checkUserscript() {
+            const el = document.getElementById('userscript-check');
+            if (window.__courseDataCallback !== undefined) {
+                el.className = 'test-item success';
+                el.textContent = '✅ 用户脚本已加载';
+                log('用户脚本已检测到', 'success');
+            } else {
+                el.className = 'test-item warning';
+                el.textContent = '⚠️ 用户脚本未检测到（这是正常的，如果未安装用户脚本）';
+                log('用户脚本未检测到', 'warning');
+            }
+        }
+
+        // 测试 fetch
+        async function testFetch() {
+            const el = document.getElementById('fetch-result');
+            el.style.display = 'block';
+            el.className = 'test-item info';
+            el.textContent = '测试中...';
+            log('开始测试 fetch 请求...');
+
+            try {
+                const response = await fetch('https://raw.githubusercontent.com/cjz-wr/PlanCraftDownload/main/rules_index.json');
+                if (response.ok) {
+                    const data = await response.json();
+                    el.className = 'test-item success';
+                    el.textContent = `✅ 成功加载学校列表，共 ${data.schools ? data.schools.length : 0} 所学校`;
+                    log('Fetch 测试成功，学校数量: ' + (data.schools ? data.schools.length : 0), 'success');
+                } else {
+                    throw new Error('HTTP ' + response.status + ' ' + response.statusText);
+                }
+            } catch (error) {
+                el.className = 'test-item error';
+                el.textContent = '❌ Fetch 失败: ' + error.message;
+                log('Fetch 测试失败: ' + error.message, 'error');
+            }
+        }
+
+        // 测试加载学校列表
+        async function testSchools() {
+            log('开始测试加载学校列表...');
+            try {
+                const response = await fetch('https://raw.githubusercontent.com/cjz-wr/PlanCraftDownload/main/rules_index.json');
+                const data = await response.json();
+                
+                if (data.schools && data.schools.length > 0) {
+                    log('学校列表加载成功:', 'success');
+                    data.schools.forEach((school, index) => {
+                        log(`  ${index + 1}. ${school.name} (${school.system})`);
+                    });
+                } else {
+                    log('警告: 学校列表为空', 'warning');
+                }
+            } catch (error) {
+                log('学校列表加载失败: ' + error.message, 'error');
+            }
+        }
+
+        // 测试用户脚本通信
+        function testUserscript() {
+            log('测试用户脚本通信...');
+            
+            // 发送测试消息
+            window.postMessage({
+                type: 'EXTRACTOR_READY'
+            }, '*');
+            
+            log('已发送 EXTRACTOR_READY 消息');
+            
+            // 监听响应
+            window.addEventListener('message', function handler(event) {
+                if (event.data && event.data.type === 'EXTRACTOR_READY') {
+                    log('收到 EXTRACTOR_READY 响应', 'success');
+                    window.removeEventListener('message', handler);
+                }
+            });
+            
+            setTimeout(() => {
+                log('未收到响应（如果未安装用户脚本，这是正常的）', 'warning');
+            }, 2000);
+        }
+
+        // 初始化
+        window.addEventListener('load', () => {
+            log('页面加载完成');
+            checkProtocol();
+            checkCORS();
+            checkFetch();
+            checkUserscript();
+        });
+    </script>
+</body>
+</html>

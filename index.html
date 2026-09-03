@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICS 课表导入</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📅 ICS 课表导入</h1>
+            <p>一键识别学校课表，生成标准 ICS 日历文件</p>
+        </header>
+
+        <main>
+            <!-- 学校选择区域 -->
+            <section class="section">
+                <h2>选择学校</h2>
+                <select id="school-select" class="select-box">
+                    <option value="">正在加载学校列表...</option>
+                </select>
+                <p class="hint">从远程数据源动态获取可识别的学校列表</p>
+            </section>
+
+            <!-- 识别区域 -->
+            <section class="section">
+                <h2>智能识别</h2>
+
+                <!-- 第一步：登录 -->
+                <div class="step-card">
+                    <div class="step-title"><span class="step-badge">1</span> 登录教务系统</div>
+                    <p class="hint">
+                        若学校登录页<strong>禁止内嵌</strong>（如 SSO），请用<strong>外部浏览器</strong>登录（仅用于登录）。
+                        登录成功后教务系统会<strong>自动跳转</strong>到课表网站，再回到本页将其放入下方<strong>内嵌浏览器</strong>。
+                    </p>
+                    <div class="button-group">
+                        <button id="open-webview-btn" class="btn btn-outline" disabled>↗ 外部浏览器登录（仅登录）</button>
+                        <button id="embed-login-btn" class="btn btn-outline" disabled>⇱ 尝试内嵌打开教务系统</button>
+                    </div>
+                    <button id="open-schedule-btn" class="btn btn-success" disabled style="margin-top: 12px;">
+                        ✅ 登录完成 · 在内嵌浏览器打开课表页
+                    </button>
+                </div>
+
+                <!-- 第二步：内嵌浏览器（课表展示/识别区） -->
+                <div class="step-card" id="embed-card" style="display: none;">
+                    <div class="step-title"><span class="step-badge">2</span> 课表页 / 识别区</div>
+
+                    <!-- 该校禁止内嵌时的说明 -->
+                    <div id="noembed-note" class="noembed-note" style="display: none;"></div>
+
+                    <!-- 可内嵌时的浏览器区 -->
+                    <div id="embed-browser">
+                        <div class="embed-toolbar">
+                            <span id="embed-address" class="embed-address" title="当前内嵌页面地址"></span>
+                            <button id="embed-refresh-btn" class="btn btn-small btn-secondary" title="刷新内嵌页面">⟳ 刷新</button>
+                        </div>
+                        <div class="webview-container embed-frame-wrap">
+                            <iframe id="embed-frame" title="内嵌浏览器"></iframe>
+                        </div>
+                        <p class="hint" id="embed-hint">请确认下方内嵌浏览器中能看到<strong>个人课表表格</strong>，再进入第 3 步识别。</p>
+                    </div>
+                </div>
+
+                <!-- 第三步：识别并生成 -->
+                <div class="step-card">
+                    <div class="step-title"><span class="step-badge">3</span> 识别并生成 ICS</div>
+                    <div class="button-group">
+                        <button id="recognize-btn" class="btn btn-primary" disabled>🔍 智能一键识别课表</button>
+                    </div>
+
+                    <!-- 书签一键识别（无粘贴 / 无扩展，GitHub Pages 可用） -->
+                    <div id="bookmark-panel" class="import-box" style="display: none;">
+                        <p class="import-title">⭐ 识别方式：书签一键识别（无需粘贴 / 无需安装扩展）</p>
+                        <ol class="import-steps">
+                            <li>先把下方 <strong>“★ 识别课表”</strong> 拖到浏览器<strong>收藏栏</strong>（拖不动时点“复制书签代码”，在收藏夹新建书签并粘贴）。</li>
+                            <li>用本工具打开教务登录并进入<strong>个人课表页</strong>（登录 sso 后会自动跳转到教务网站）。</li>
+                            <li>在该课表页点一下收藏栏的“识别课表”：工具会在该页本地运行<strong>该校官方提取脚本</strong>，结果<strong>自动回传</strong>本页并生成课表，全程无需复制粘贴。</li>
+                        </ol>
+                        <div class="bookmark-bar">
+                            <a id="bookmark-link" class="bookmark-drag" draggable="true" href="javascript:void(0)">★ 识别课表（拖到收藏栏）</a>
+                            <button id="bookmark-copy-btn" class="btn btn-small btn-outline">复制书签代码</button>
+                        </div>
+                        <p class="hint" id="bookmark-hint"></p>
+                    </div>
+                </div>
+
+                <div id="webview-status" class="webview-status" style="display: none;">
+                    <span class="status-dot"></span>
+                    <span class="status-text">等待登录...</span>
+                </div>
+            </section>
+
+            <!-- 学期时间选择 -->
+            <section class="section" id="semester-section" style="display: none;">
+                <h2>学期设置</h2>
+                <label for="semester-start">学期开始时间（开学当周的周一）</label>
+                <input type="date" id="semester-start" class="date-input">
+                <p class="hint">请选择学期开始的第一周周一日期</p>
+            </section>
+
+            <!-- 结果区域 -->
+            <section class="section" id="result-section" style="display: none;">
+                <h2>识别结果</h2>
+                <div id="course-list" class="course-list"></div>
+                <div class="actions">
+                    <button id="download-btn" class="btn btn-success">
+                        📥 下载 ICS 文件
+                    </button>
+                    <button id="upload-btn" class="btn btn-secondary">
+                        ☁️ 上传获取分享链接
+                    </button>
+                </div>
+            </section>
+
+            <!-- 分享链接区域 -->
+            <section class="section" id="share-section" style="display: none;">
+                <h2>分享链接</h2>
+                <div class="share-link">
+                    <input type="text" id="share-url" readonly>
+                    <button id="copy-btn" class="btn btn-small">复制</button>
+                </div>
+                <p class="hint">链接有效期 24 小时</p>
+            </section>
+
+            <!-- 状态提示 -->
+            <div id="status" class="status"></div>
+        </main>
+
+        <footer>
+            <p>ICS 课表导入工具 - 部署在 GitHub Pages</p>
+        </footer>
+    </div>
+
+    <script src="js/main.js"></script>
+    <script src="js/upload.js"></script>
+    <script src="js/ics-generator.js"></script>
+</body>
+</html>
