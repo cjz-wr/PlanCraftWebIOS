@@ -450,11 +450,16 @@ async function recognizeFromHtml(html) {
 
     if (!data || !data.length) return false;
 
-    state.courseData = data;
-    updateWebviewStatus('connected', '识别成功：共 ' + data.length + ' 门课程');
+    // 合并同一课程同一半日内的重复/相邻记录（与 ICS 生成规则一致），保证页面列表与 ICS 一致
+    state.courseData = ICSGenerator.mergeDuplicateTimes(data);
+    const courseCount = state.courseData.length;
+    if (courseCount !== data.length) {
+        console.log('[ICS] 已合并重复课程记录：' + data.length + ' 条 → ' + courseCount + ' 条');
+    }
+    updateWebviewStatus('connected', '识别成功：共 ' + courseCount + ' 门课程');
     if (elements.semesterSection) elements.semesterSection.style.display = 'block';
     hideBookmarkPanel();
-    showStatus('课表识别成功，共 ' + data.length + ' 门课程。请选择学期开始时间。', 'success');
+    showStatus('课表识别成功，共 ' + courseCount + ' 门课程。请选择学期开始时间。', 'success');
     console.log('[ICS] 识别结果:', data);
     return true;
 }
@@ -774,11 +779,16 @@ function handleExternalMessage(event) {
     if (!d || typeof d !== 'object') return;
 
     if (d.type === 'COURSE_DATA' && Array.isArray(d.payload)) {
-        state.courseData = d.payload;
+        // 合并同一课程同一半日内的重复/相邻记录（与 ICS 生成规则一致），保证页面列表与 ICS 一致
+        state.courseData = ICSGenerator.mergeDuplicateTimes(d.payload);
+        const courseCount = state.courseData.length;
+        if (courseCount !== d.payload.length) {
+            console.log('[ICS] 已合并重复课程记录：' + d.payload.length + ' 条 → ' + courseCount + ' 条');
+        }
         if (elements.semesterSection) elements.semesterSection.style.display = 'block';
         hideBookmarkPanel();
         updateWebviewStatus('connected', '已获取课表数据');
-        showStatus('课表识别完成，共 ' + d.payload.length + ' 门课程。请选择学期开始时间。', 'success');
+        showStatus('课表识别完成，共 ' + courseCount + ' 门课程。请选择学期开始时间。', 'success');
     } else if (d.type === 'EXTRACTOR_ERROR') {
         const msg = (d.payload && d.payload.message) || d.message || '未知错误';
         showStatus('识别失败：' + msg, 'error');

@@ -142,7 +142,9 @@ const ICSGenerator = {
             const minStart = group.reduce((m, x) => (x.start < m ? x.start : m), group[0].start);
             const maxEnd = group.reduce((m, x) => (x.end > m ? x.end : m), group[0].end);
             const base = group[0].course;
-            mergedEntryByFirstIndex.set(group[0].index, Object.assign({}, base, { startTime: minStart, endTime: maxEnd }));
+            // 存储为 HH:MM，便于页面列表直接展示（ICS 生成时会再 normalize 成 HHMM）
+            const fmtHm = h => (h && h.length === 4) ? h.slice(0, 2) + ':' + h.slice(2) : h;
+            mergedEntryByFirstIndex.set(group[0].index, Object.assign({}, base, { startTime: fmtHm(minStart), endTime: fmtHm(maxEnd) }));
             group.forEach(x => mergedIndexes.add(x.index));
             console.log(`[ICS Generator] 合并同一课程同半日记录“${base.name}”（周${base.day}，周次:${base.weeks}）：${group.map(x => x.start + '-' + x.end).join('、')} → ${minStart}-${maxEnd}`);
         });
