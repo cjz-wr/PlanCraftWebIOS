@@ -8,8 +8,10 @@
     <link rel="stylesheet" href="css/glass-ui.css">
 </head>
 <body>
-    <div class="bg-layer" aria-hidden="true"></div>
-    <canvas class="particles-layer" id="particles-canvas" aria-hidden="true"></canvas>
+    <!-- 背景视频 -->
+    <video class="bg-video" autoplay muted loop playsinline preload="auto" aria-hidden="true">
+        <source src="Bg-mov/2.mp4" type="video/mp4">
+    </video>
     <div class="container">
         <header>
             <h1>📅 ICS 课表导入</h1>
@@ -137,6 +139,5 @@
     <script src="js/main.js"></script>
     <script src="js/upload.js"></script>
     <script src="js/ics-generator.js"></script>
-    <script src="js/particles.js"></script>
 </body>
 </html>
