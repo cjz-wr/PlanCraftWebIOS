@@ -5,7 +5,7 @@
 
 const UploadManager = {
     // Cloudflare Worker 代理地址（硬编码）
-    _proxyUrl: 'https://divine-butterfly-d73b.2963393348.workers.dev',
+    _proxyUrl: 'https://fragrant-tree-1578.66b959fe.er.aliyun-esa.net/',
     /**
      * 上传文件到 tmpfiles.org
      * @param {File} file - 要上传的文件
