@@ -67,6 +67,14 @@ ics-course-import/
 ### 安卓app版本链接
 - **安装包列表**: [PlanCraft](https://github.com/cjz-wr/PlanCraftDownload/releases)
 ---
+### 相关群聊
+
+交流 QQ 群：[578148848](https://qun.qq.com/universal-share/share?ac=1&authKey=bcWsNjcbkn%2Fm5LBE0zzE09Kn4pSInw9O7z%2B2Dd1hj3uPPOsaruoEkIEwp2yAbAw4&busi_data=eyJncm91cENvZGUiOiI1NzgxNDg4NDgiLCJ0b2tlbiI6IkdRNjJsSFlIQk1Vb2NoSHVvclZPV2NiSlJiejBLWWxnODh3RmovcW85L21nNGc3OVVkUEExMkRuNDBBd3lONTMiLCJ1aW4iOiIyOTYzMzkzMzQ4In0%3D&data=tnjVCQEiG8ztbLxkN1DqY_Z-iuz-x4t8OGh71jCccqiJEsHE8tAMjqrKdbqcrKBdmh_YGgFtr79ognfmf5N9aQ&svctype=4&tempid=h5_group_info)
+
+交流微信群:![xz](./PlanCraft官方群.png)
+
+
+---
 ## 🤝 开源与贡献
 
 本项目基于 **MIT 许可证** 开源，欢迎 Fork 和提交 Pull Request。  
